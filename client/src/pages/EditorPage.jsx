@@ -122,7 +122,7 @@ function EditorPage() {
         <div className="mb-4">
           <h2 className="text-lg font-semibold">Connected User</h2>
           <div className="mt-2">
-            <p>{username}</p>
+            <p>{connectedUsers.length}</p>
           </div>
         </div>
 
