@@ -16,7 +16,7 @@ function Home() {
     toast.success("Redirecting to room...");
     // Simulate a delay for the toast, then redirect
     setTimeout(() => {
-      navigate(`/room/${roomId}`);
+      navigate(`/room/${roomId}`,{ state: { username } });
     }, 2000);
   };
 

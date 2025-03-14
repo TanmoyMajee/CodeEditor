@@ -1,55 +1,113 @@
 
-import React , { useState,useEffect}from 'react';
-import User from '../components/user';
+import React, { useState, useEffect, useRef } from 'react';
+import User from '../components/User';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { toast } from 'react-toastify';
-import { useNavigate,useParams } from 'react-router-dom';
 import Editor from '@monaco-editor/react';
 import io from 'socket.io-client';
 
 function EditorPage() {
-  const roomId = useParams().roomId;
+  const location = useLocation();
+  const { roomId } = useParams();
+  const { username } = location.state || { username: "Guest" };
   const navigate = useNavigate();
-  const [ConnectedUser , setConnectedUser] = useState([]);
-    const [code, setCode] = useState('// Start coding here...');
+  const socketRef = useRef(null);
+  const [connectedUsers, setConnectedUsers] = useState([]);
+  const [code, setCode] = useState('// Start coding here...');
+
   useEffect(() => {
-    // Establish socket connection to your server
-  const socketServerUrl = import.meta.env.VITE_BACKEND_URL;
-const socket = io(socketServerUrl);
-    // const socket = io('http://localhost:3000')
+    const socketServerUrl = import.meta.env.VITE_BACKEND_URL;
+    // Initialize and store the socket instance in a ref
+    socketRef.current = io(socketServerUrl);
 
     // Listen for the connection event
-    socket.on('connect', () => {
-      console.log('Socket connected with id:', socket.id);
+    socketRef.current.on('connect', () => {
+      console.log('Socket connected with id:', socketRef.current.id);
     });
 
-    // Cleanup: Disconnect the socket when the component unmounts
+    // Update connected users list
+    socketRef.current.on('ConnectedUsers', (data) => {
+      console.log('Connected users:', data);
+      setConnectedUsers(data);
+    });
+
+    // Listen for a new user joining and show a toast
+    socketRef.current.on('user-joined', (newUsername) => {
+      if (newUsername !== username) {
+        toast.info(`${newUsername} joined the room`);
+      }
+    });
+
+    // Listen for a user leaving and show a toast
+    socketRef.current.on('user-left', (leftUsername) => {
+      if (leftUsername !== username) {
+        console.log('User left:', leftUsername);
+        toast.info(`${leftUsername} left the room`);
+      }
+    });
+
+    // Emit join-room event with roomId and username
+    socketRef.current.emit('join-room', { roomId, username });
+
+      // **New Listener**: Listen for the initial code from the server
+    socketRef.current.on('initial-code', (initialCode) => {
+      console.log('Received initial code:', initialCode);
+      setCode(initialCode);
+    });
+
+     // Listen for code updates from other clients
+    socketRef.current.on('code-update', (updatedCode) => {
+      // Optionally check if the code is different before updating
+      setCode(updatedCode);
+    });
+
+    // Cleanup on unmount
     return () => {
-      socket.disconnect();
+      if (socketRef.current) {
+         socketRef.current.off('connect');
+    socketRef.current.off('ConnectedUsers');
+    socketRef.current.off('user-joined');
+    socketRef.current.off('user-left');
+    socketRef.current.off('code-update');
+    socketRef.current.off('initial-code');
+      }
     };
-  }, []);
+  }, [roomId, username]);
 
   const leavRoomFun = () => {
-    // Leave the room
-    toast.success("You have left the room , Redirect to Home Page");
+    if (socketRef.current) {
+      // Notify the server that the user is leaving
+      socketRef.current.emit('leave-room', { roomId, username });
+      socketRef.current.disconnect();
+    }
+    toast.success("You have left the room, redirecting to Home Page");
     setTimeout(() => {
       navigate('/');
-    } , 1000);
-  }
-const copyRoomIdFun = () => {
-  if (!roomId) {
-    toast.error("Room ID is empty!");
-    return;
-  }
+    }, 1000);
+  };
 
-  navigator.clipboard.writeText(roomId)
-    .then(() => {
-      toast.success("Room ID copied to clipboard!");
-    })
-    .catch((err) => {
-      console.error("Error copying room ID:", err);
-      toast.error("Failed to copy Room ID!");
-    });
-};
+  const copyRoomIdFun = () => {
+    if (!roomId) {
+      toast.error("Room ID is empty!");
+      return;
+    }
+    navigator.clipboard.writeText(roomId)
+      .then(() => {
+        toast.success("Room ID copied to clipboard!");
+      })
+      .catch((err) => {
+        console.error("Error copying room ID:", err);
+        toast.error("Failed to copy Room ID!");
+      });
+  };
+
+    // Emit code changes as the user types
+  const handleCodeChange = (value) => {
+    setCode(value);
+    if (socketRef.current) {
+      socketRef.current.emit('code-change', { roomId, code: value });
+    }
+  };
 
   return (
     <div className="flex h-screen">
@@ -64,53 +122,45 @@ const copyRoomIdFun = () => {
         <div className="mb-4">
           <h2 className="text-lg font-semibold">Connected User</h2>
           <div className="mt-2">
-            <p>User 1</p>
+            <p>{username}</p>
           </div>
         </div>
 
         {/* List of All Connected Users */}
         <div className="flex-grow mb-4">
           <h2 className="text-lg font-semibold">Participants</h2>
-          {/* <div className="mt-2 space-y-2">
-            <div className="p-2 bg-gray-700 rounded">User 1</div>
-            <div className="p-2 bg-gray-700 rounded">User 2</div>
-            <div className="p-2 bg-gray-700 rounded">User 3</div>
-          </div> */}
-              {/* Fixed height with scrollable content */}
-    <div className="mt-2 space-y-2 h-100 overflow-y-auto">
-     <User name={1}/>
-      <User name={1}/>
-      <User name={1}/>
-      <User name={1}/>
-      <User name={1}/>
-      <User name={1}/>
-      {/* Additional users can be added here */}
-    </div>
+          <div className="mt-2 space-y-2 h-40 overflow-y-auto">
+            {connectedUsers.map((user) => (
+              <User key={user.socketId} username={user.username} />
+            ))}
+          </div>
         </div>
 
         {/* Controls: Leave Room & Copy Room ID */}
-        <div>
-          <button onClick={leavRoomFun} className="w-full bg-red-500 hover:bg-red-600 text-white py-2 rounded mb-2">
+        <div className="mt-auto">
+          <button 
+            onClick={leavRoomFun} 
+            className="w-full bg-red-500 hover:bg-red-600 text-white py-2 rounded mb-2"
+          >
             Leave Room
           </button>
-          <button onClick={copyRoomIdFun} className="w-full bg-blue-500 hover:bg-blue-600 text-white py-2 rounded">
+          <button 
+            onClick={copyRoomIdFun} 
+            className="w-full bg-blue-500 hover:bg-blue-600 text-white py-2 rounded"
+          >
             Copy Room ID
           </button>
         </div>
       </div>
 
       {/* Right Side: Code Editor */}
-      <div className=" w-full bg-gray-900 p-4">
-        {/* <textarea
-          className="w-full h-full bg-gray-800 text-green-300 p-4 rounded border border-gray-700 focus:outline-none focus:border-blue-500 resize-none"
-          placeholder="Write your code here..."
-        /> */}
+      <div className="flex-grow bg-gray-900 p-4">
         <Editor
           height="100%"
           defaultLanguage="javascript"
           value={code}
           theme="vs-dark"
-          onChange={(value, event) => setCode(value)}
+          onChange={handleCodeChange}
         />
       </div>
     </div>
