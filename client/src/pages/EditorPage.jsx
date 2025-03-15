@@ -3,6 +3,7 @@ import React, { useState, useEffect, useRef ,useCallback } from 'react';
 import User from '../components/User';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { toast } from 'react-toastify';
+import { debounce, throttle } from 'lodash';
 import Editor from '@monaco-editor/react';
 import io from 'socket.io-client';
 
@@ -121,27 +122,36 @@ function EditorPage() {
       });
   };
 
-    // Emit code changes as the user types
-  const handleCodeChange = (value) => {
-    setCode(value);
-    if (socketRef.current) {
-      socketRef.current.emit('code-change', { roomId, code: value });
-      userActive();
-    }
-  };
-
- // **NEW FUNCTION: Emit a "user-active" event to signal activity**
+   // **NEW FUNCTION: Emit a "user-active" event to signal activity**
   // You might want to throttle or debounce this function to avoid flooding the server.
-  const userActive = useCallback(() => {
+   // Throttle userActive to emit at most once every 300ms
+  const userActive = useCallback(throttle(() => {
     if (socketRef.current) {
       socketRef.current.emit('user-active', {
         roomId,
         username,
         socketId: socketRef.current.id,
-        timestamp: Date.now()
+        timestamp: Date.now(),
       });
     }
-  }, [roomId, username]);
+  }, 300), [roomId, username]);
+
+  // Handle code change: update state and call debounced function
+  const handleCodeChange = (value) => {
+    setCode(value);
+    debouncedCodeChange(value);
+  };
+
+    // Debounce code changes: wait 300ms after typing stops before sending update
+  const debouncedCodeChange = useCallback(debounce((value) => {
+    if (socketRef.current) {
+      socketRef.current.emit('code-change', { roomId, code: value });
+      // Also signal that the user is active
+      userActive();
+    }
+  }, 300), [roomId, userActive]);
+
+
 
   return (
     <div className="flex h-screen">
