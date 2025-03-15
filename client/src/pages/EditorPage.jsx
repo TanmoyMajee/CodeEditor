@@ -176,7 +176,7 @@ function EditorPage() {
           <div className="grid grid-cols-2 mt-2 space-y-2 h-90 overflow-y-auto">
               {connectedUsers.map((user) => {
               // **Determine if user is active**: Check if their last activity is within 5 seconds.
-              const isActive = activeUsers[user.socketId] && (Date.now() - activeUsers[user.socketId] < 5000);
+              const isActive = activeUsers[user.socketId] && (Date.now() - activeUsers[user.socketId] < 1000);
               return <User key={user.socketId} username={user.username} active={isActive} />;
             })}
           </div>

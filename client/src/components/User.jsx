@@ -7,7 +7,7 @@ function User({ username, active }) {
       {/* **NEW: Show active indicator if the user is active** */}
       {active && (
         <span className="absolute top-0 right-0 bg-green-500 text-xs px-1 rounded">
-          Active
+          Typing
         </span>
       )}
     </div>
