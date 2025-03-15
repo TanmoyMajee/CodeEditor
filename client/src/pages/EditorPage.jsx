@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef ,useCallback } from 'react';
 import User from '../components/User';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { toast } from 'react-toastify';
@@ -14,6 +14,8 @@ function EditorPage() {
   const socketRef = useRef(null);
   const [connectedUsers, setConnectedUsers] = useState([]);
   const [code, setCode] = useState('// Start coding here...');
+    // **NEW STATE: To track last active timestamp for each user by socketId**
+  const [activeUsers, setActiveUsers] = useState({});
 
   useEffect(() => {
     const socketServerUrl = import.meta.env.VITE_BACKEND_URL;
@@ -61,6 +63,13 @@ function EditorPage() {
       setCode(updatedCode);
     });
 
+        // **NEW LISTENER: Listen for "user-active" events from other clients**
+    socketRef.current.on('user-active', (data) => {
+      // data contains: { roomId, username, socketId, timestamp }
+      // Update the activeUsers state with the latest timestamp for the user (using their socketId)
+      setActiveUsers(prev => ({ ...prev, [data.socketId]: data.timestamp }));
+    });
+
     // Cleanup on unmount
     return () => {
       if (socketRef.current) {
@@ -70,9 +79,20 @@ function EditorPage() {
     socketRef.current.off('user-left');
     socketRef.current.off('code-update');
     socketRef.current.off('initial-code');
+     socketRef.current.off('user-active');
+     socketRef.current.disconnect();
       }
     };
   }, [roomId, username]);
+
+  useEffect(() => {
+  const interval = setInterval(() => {
+    // Trigger a re-render by updating a dummy state or forceUpdate.
+    setActiveUsers(prev => ({ ...prev }));
+  }, 1000); // every 1 second
+
+  return () => clearInterval(interval);
+}, []);
 
   const leavRoomFun = () => {
     if (socketRef.current) {
@@ -106,8 +126,22 @@ function EditorPage() {
     setCode(value);
     if (socketRef.current) {
       socketRef.current.emit('code-change', { roomId, code: value });
+      userActive();
     }
   };
+
+ // **NEW FUNCTION: Emit a "user-active" event to signal activity**
+  // You might want to throttle or debounce this function to avoid flooding the server.
+  const userActive = useCallback(() => {
+    if (socketRef.current) {
+      socketRef.current.emit('user-active', {
+        roomId,
+        username,
+        socketId: socketRef.current.id,
+        timestamp: Date.now()
+      });
+    }
+  }, [roomId, username]);
 
   return (
     <div className="flex h-screen">
@@ -129,10 +163,12 @@ function EditorPage() {
         {/* List of All Connected Users */}
         <div className="flex-grow mb-4">
           <h2 className="text-lg font-semibold">Participants</h2>
-          <div className="mt-2 space-y-2 h-40 overflow-y-auto">
-            {connectedUsers.map((user) => (
-              <User key={user.socketId} username={user.username} />
-            ))}
+          <div className="grid grid-cols-2 mt-2 space-y-2 h-90 overflow-y-auto">
+              {connectedUsers.map((user) => {
+              // **Determine if user is active**: Check if their last activity is within 5 seconds.
+              const isActive = activeUsers[user.socketId] && (Date.now() - activeUsers[user.socketId] < 5000);
+              return <User key={user.socketId} username={user.username} active={isActive} />;
+            })}
           </div>
         </div>
 

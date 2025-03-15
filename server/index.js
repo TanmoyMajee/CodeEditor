@@ -83,6 +83,12 @@ io.on('connection', (socket) => {
     socket.to(roomId).emit('code-update', code);
   });
 
+  socket.on('user-active', (data) => {
+  // Data: { roomId, username, socketId, timestamp }
+  // Broadcast the activity event to all clients in the room except the sender.
+  socket.to(data.roomId).emit('user-active', data);
+});
+
   // Handle socket disconnection (e.g., network issues, browser closed)
   socket.on('disconnecting', () => {
     // console.log('Client disconnected:', socket.id);
